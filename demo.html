@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+    <title>AMR decode/encode tests</title>
+    <script src="amrwb.js" defer></script>
+    <script src="amrwb-util.js" defer></script>
+</head>
+
+<body>
+
+<h2>Decode amr file and play</h2>
+<table>
+<tr id="sample-amr0"><td><button>Play</button></td><td><a href="audio/sample_6600.amr">sample_6600.amr</a></td></tr>
+<tr id="sample-amr1"><td><button>Play</button></td><td><a href="audio/sample_8850.amr">sample_8850.amr</a></td></tr>
+<tr id="sample-amr2"><td><button>Play</button></td><td><a href="audio/sample_12650.amr">sample_12650.amr</a></td></tr>
+<tr id="sample-amr3"><td><button>Play</button></td><td><a href="audio/sample_14250.amr">sample_14250.amr</a></td></tr>
+<tr id="sample-amr4"><td><button>Play</button></td><td><a href="audio/sample_15850.amr">sample_15850.amr</a></td></tr>
+<tr id="sample-amr5"><td><button>Play</button></td><td><a href="audio/sample_19850.amr">sample_19850.amr</a></td></tr>
+<tr id="sample-amr6"><td><button>Play</button></td><td><a href="audio/sample_23050.amr">sample_23050.amr</a></td></tr>
+<tr id="sample-amr7"><td><button>Play</button></td><td><a href="audio/sample_23850.amr">sample_23850.amr</a></td></tr>
+</table>
+<script>
+    /* Derived from https://github.com/yxl/opencore-amr-js/blob/master/js/demo.html
+    * under terms of Apache 2 license
+    * Adapted for use with amrwb codec from armnb
+    */
+
+    function E(selector) {
+        return document.querySelector(selector);
+    }
+
+    for (var i=0; i < 8; i++) {
+        var buttonSelector = '#sample-amr' + i + ' > td > button';
+        E(buttonSelector).onclick = function() {
+            var href = this.parentNode.parentNode.children[1].children[0].href;
+            fetchBlob(href, function(blob) {
+                playAmrBlob(blob);
+            });
+        };
+    }
+
+    var gAudioContext = new AudioContext();
+
+    function getAudioContext() {
+        if (!gAudioContext) {
+            gAudioContext = new AudioContext();
+        }
+        return gAudioContext;
+    }
+
+    function fetchBlob(url, callback) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url);
+        xhr.responseType = 'blob';
+        xhr.onload = function() {
+            callback(this.response);
+        };
+        xhr.onerror = function() {
+            alert('Failed to fetch ' + url);
+        };
+        xhr.send();
+    }
+
+    function readBlob(blob, callback) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var data = new Uint8Array(e.target.result);
+            callback(data);
+        };
+        reader.readAsArrayBuffer(blob);
+    }
+
+    function playAmrBlob(blob, callback) {
+        readBlob(blob, function(data) {
+            playAmrArray(data);
+        });
+    }
+
+    function playAmrArray(array) {
+        AMRWB.decodeInit();
+        var samples = AMRWB.decode(array);
+        AMRWB.decodeExit();
+        if (!samples) {
+            alert('Failed to decode!');
+            return;
+        }
+        playPcm(samples);
+    }
+
+    function playPcm(samples) {
+        var ctx = getAudioContext();    
+        var src = ctx.createBufferSource();
+        var buffer = ctx.createBuffer(1, samples.length, 16000);
+        if (buffer.copyToChannel) {
+            buffer.copyToChannel(samples, 0, 0)
+        } else {
+            var channelBuffer = buffer.getChannelData(0);
+            channelBuffer.set(samples);
+        }
+        src.buffer = buffer;
+        src.connect(ctx.destination);
+        src.start();
+    }
+</script>
+</body>
+</html>
