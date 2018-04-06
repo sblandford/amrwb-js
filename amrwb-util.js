@@ -1,5 +1,25 @@
-var AMRWB_UTIL = {
+/* Derived from https://github.com/yxl/opencore-amr-js/blob/master/js/pre.js
+ * under terms of Apache 2 license
+ * Adapted for use with amrwb codec from armnb
+ */
 
+var AMRWB_UTIL = {
+   /**
+   * Decode AMR file to the PCM data with sample rate 8000.
+   * @param {Uint8Array} amr The raw amr file data.
+   * @returns {Float32Array} PCM data if succeeded. Otherwise null.
+   */
+    decode: function(amr) {
+    var raw= this._decode(amr);
+        if (!raw) {
+            return null;
+        }
+        var out = new Float32Array(raw.length);
+        for (var i = 0; i < out.length; i++) {
+            out[i] = raw[i] / 0x8000;
+        }
+        return out;
+    },
     /**
     * Decode RTP AMR file to the PCM data with sample rate 8000.
     * @param {Uint8Array} amr The raw amr file data.
@@ -21,8 +41,8 @@ var AMRWB_UTIL = {
     /**
     * Initialise the decoder
     */  
-    decodeInit: function (decoder) {
-        if (!this.decoder && !decoder) {
+    decodeInit: function () {
+        if (!this.decoder) {
             this.decoder = this.D_IF_init();
         }
         return this.decoder;
@@ -36,10 +56,59 @@ var AMRWB_UTIL = {
             delete this.decoder;
         }
     },
-        
     /**
-    * Decode RTP file to raw PCM data with sample rate 16000.
+    * Decode AMR file to raw PCM data with sample rate 16000.
     * @param {Uint8Array} amr The raw amr file data.
+    * @returns {Int16Array} PCM data if succeeded. Otherwise null.
+    */
+    _decode: function(amr) {
+        // Check file header.
+        if (String.fromCharCode.apply(null, amr.subarray(0, this.AMR_HEADER.length)) !== this.AMR_HEADER) {
+            return null;
+        }
+
+        if (!this.decoder) {
+            return null;
+        }
+
+        var out = new Int16Array(Math.floor(amr.length / 6 * this.PCM_BUFFER_COUNT));
+
+        var buf = AMRWB._malloc(this.AMR_BUFFER_COUNT);
+        var decodeInBuffer = new Uint8Array(AMRWB._HEAPU8.buffer, buf, this.AMR_BUFFER_COUNT);
+
+        buf = AMRWB._malloc(this.PCM_BUFFER_COUNT * 2);
+        var decodeOutBuffer = new Int16Array(AMRWB._HEAPU8.buffer, buf, this.PCM_BUFFER_COUNT);
+
+        var inOffset = this.AMR_HEADER.length;
+        var outOffset = 0;
+        while (inOffset + 1 < amr.length &&
+            outOffset + 1 < out.length) {
+            // Find the package size
+            var size = this.SIZES[(amr[inOffset] >> 3) & 0x0F];
+            if (inOffset + size + 1 > amr.length) {
+                break;
+            }
+            decodeInBuffer.set(amr.subarray(inOffset, inOffset + size + 1));
+            this.D_IF_decode(this.decoder, decodeInBuffer.byteOffset,decodeOutBuffer.byteOffset, 0);
+
+            if (outOffset + this.PCM_BUFFER_COUNT > out.length) {
+                var newOut = new Int16Array(out.length * 2);
+                newOut.set(out.subarray(0, outOffset));
+                out = newOut;
+            }
+            out.set(decodeOutBuffer, outOffset);
+            outOffset += this.PCM_BUFFER_COUNT;
+            inOffset += size + 1;
+        }
+
+        AMRWB._free(decodeInBuffer.byteOffset);
+        AMRWB._free(decodeOutBuffer.byteOffset);
+
+        return out.subarray(0, outOffset);
+    },
+    /**
+    * Decode RTP packet to raw PCM data with sample rate 16000.
+    * @param {Uint8Array} rtp The RTP encapsulated amr file data.
     * @returns {Int16Array} PCM data if succeeded. Otherwise null.
     */
     _decodeRtp: (function(rtp) {
@@ -118,4 +187,3 @@ var AMRWB_UTIL = {
 };
 
 Object.assign(AMRWB, AMRWB_UTIL);
-
